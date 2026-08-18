@@ -11,6 +11,7 @@ import { AFDC_CATEGORY_COLOR, healthColor, trendColor, colors } from "@/lib/them
 import Legend from "./Legend";
 import LayerToggle from "./LayerToggle";
 import StationPanel from "./StationPanel";
+import ExportButton from "./ExportButton";
 
 const BASEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty"; // free, no API key required
 
@@ -39,6 +40,16 @@ export default function Map() {
   const [mode, setMode] = useState<MapMode>("ghost");
   const [selected, setSelected] = useState<Station | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const deepLinkHandled = useRef(false);
+  // Captured synchronously on first render, before any effect runs -- the
+  // URL-sync effect below fires on mount (when `selected` is still null)
+  // and would otherwise strip `?station=` via replaceState before the
+  // async station-data fetch even resolves, losing the deep link entirely.
+  const [initialDeepLinkId] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    const v = new URLSearchParams(window.location.search).get("station");
+    return v ? Number(v) : null;
+  });
 
   useEffect(() => {
     fetch("/data/stations_summary.json")
@@ -49,6 +60,29 @@ export default function Map() {
       .then((data: Station[]) => setStations(data))
       .catch((e) => setLoadError(String(e)));
   }, []);
+
+  // deep link: ?station=<LocID> opens straight to that station's panel,
+  // so the digest/a tweet/a journalist can link one specific finding
+  // instead of just the homepage.
+  useEffect(() => {
+    if (!stations || deepLinkHandled.current) return;
+    deepLinkHandled.current = true;
+    if (initialDeepLinkId === null) return;
+    const match = stations.find((s) => s.LocID === initialDeepLinkId);
+    if (match) {
+      setSelected(match);
+      mapRef.current?.jumpTo({ center: [match.long, match.lat], zoom: 9 });
+    }
+  }, [stations]);
+
+  // keep the URL in sync with the current selection (replaceState, not
+  // push, so clicking around the map doesn't spam the browser history).
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (selected) url.searchParams.set("station", String(selected.LocID));
+    else url.searchParams.delete("station");
+    window.history.replaceState(null, "", url.toString());
+  }, [selected]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -138,8 +172,9 @@ export default function Map() {
       />
 
       <div className="pointer-events-none absolute inset-0">
-        <div className="pointer-events-auto absolute left-4 top-4">
+        <div className="pointer-events-auto absolute left-4 top-4 flex items-start gap-2">
           <LayerToggle mode={mode} onChange={setMode} />
+          <ExportButton stations={stations} />
         </div>
         <div className="pointer-events-auto absolute bottom-4 left-4">
           <Legend mode={mode} count={stations?.length ?? null} />

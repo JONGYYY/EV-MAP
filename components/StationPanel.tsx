@@ -25,6 +25,16 @@ function Stat({ label, value }: { label: string; value: string }) {
 export default function StationPanel({ station, onClose }: { station: Station; onClose: () => void }) {
   const [history, setHistory] = useState<HistoryMonth[] | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  function copyLink() {
+    const url = new URL(window.location.href);
+    url.searchParams.set("station", String(station.LocID));
+    navigator.clipboard.writeText(url.toString()).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -53,13 +63,23 @@ export default function StationPanel({ station, onClose }: { station: Station; o
             {station.state ?? "—"} · LocID {station.LocID}
           </p>
         </div>
-        <button
-          onClick={onClose}
-          aria-label="Close station details"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink-muted hover:bg-surface-raised hover:text-ink"
-        >
-          ✕
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            onClick={copyLink}
+            aria-label="Copy a link directly to this station"
+            title="Copy link to this station"
+            className="flex h-11 min-w-[44px] items-center justify-center rounded-md px-2 text-xs font-medium text-ink-muted hover:bg-surface-raised hover:text-ink"
+          >
+            {copied ? "Copied ✓" : "Copy link"}
+          </button>
+          <button
+            onClick={onClose}
+            aria-label="Close station details"
+            className="flex h-11 w-11 items-center justify-center rounded-md text-ink-muted hover:bg-surface-raised hover:text-ink"
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       <div className="mb-4 rounded-md border border-ghost/30 bg-ghost/10 px-3 py-2 text-xs text-ink">
