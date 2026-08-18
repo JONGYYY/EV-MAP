@@ -118,7 +118,11 @@ export default function StationPanel({ station, onClose }: { station: Station; o
         </div>
       )}
 
-      <Stat label="Lifecycle status" value={COHORT_LABEL[station.cohort] ?? station.cohort} />
+      <Stat
+        label="Lifecycle status"
+        value={COHORT_LABEL[station.cohort] ?? station.cohort}
+        tooltip="Based on when this station appears in our panel (July 2023 - June 2026): 'active since day one' was present at the very start; 'newly added' wasn't there at the start but is now; 'retired' was present at the start and disappeared for 12+ months; 'transient' appeared and/or disappeared mid-panel with under 12 months of tenure."
+      />
       <Stat label="Charger type" value={station.speed ?? "unknown"} />
       {station.brand && <Stat label="Brand / network" value={station.brand} />}
       <Stat label="Total ports" value={station.total_ports !== null ? station.total_ports.toString() : "—"} />
