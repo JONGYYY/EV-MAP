@@ -13,6 +13,7 @@ import LayerToggle from "./LayerToggle";
 import StationPanel from "./StationPanel";
 import ExportButton from "./ExportButton";
 import Leaderboard from "./Leaderboard";
+import FreshnessBadge from "./FreshnessBadge";
 
 const BASEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty"; // free, no API key required
 
@@ -195,6 +196,12 @@ export default function Map() {
         <div className="pointer-events-auto absolute bottom-4 left-4 flex items-end gap-2">
           <Legend mode={mode} count={stations?.length ?? null} />
           {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} />}
+        </div>
+        {/* bottom-8, not bottom-4: MapLibre's required attribution control
+            occupies the same corner at the very bottom edge -- this keeps
+            it clearly visible rather than crowded/covered. */}
+        <div className="pointer-events-auto absolute bottom-8 right-4">
+          <FreshnessBadge />
         </div>
         {loadError && (
           <div className="pointer-events-auto absolute left-1/2 top-4 -translate-x-1/2 rounded-md border border-ghost/40 bg-surface-panel/90 px-4 py-2 text-sm text-ghost">
