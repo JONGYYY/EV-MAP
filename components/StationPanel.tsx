@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { Station } from "@/lib/types";
 import { AFDC_CATEGORY_LABEL } from "@/lib/theme";
+import { queryStationHistory, type HistoryMonth } from "@/lib/duckdb";
+import HistoryChart from "./HistoryChart";
 
 const COHORT_LABEL: Record<string, string> = {
   ACTIVE_THROUGHOUT: "Active since day one",
@@ -20,6 +23,25 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 export default function StationPanel({ station, onClose }: { station: Station; onClose: () => void }) {
+  const [history, setHistory] = useState<HistoryMonth[] | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHistory(null);
+    setHistoryError(null);
+    queryStationHistory(station.LocID)
+      .then((rows) => {
+        if (!cancelled) setHistory(rows);
+      })
+      .catch((e) => {
+        if (!cancelled) setHistoryError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [station.LocID]);
+
   return (
     <div className="glass-panel h-full w-96 max-w-[90vw] overflow-y-auto p-5 shadow-2xl animate-panel-in">
       <div className="mb-4 flex items-start justify-between gap-2">
@@ -59,11 +81,18 @@ export default function StationPanel({ station, onClose }: { station: Station; o
         }
       />
 
-      {/* Full 3-year time series (utilization + reporting status) loads here
-          via DuckDB-WASM querying station_history.parquet, keyed on LocID --
-          follow-up build step, not wired up in this pass. */}
-      <div className="mt-4 rounded-md border border-dashed border-surface-border p-3 text-center text-xs text-ink-faint">
-        Full monthly history panel — coming in the next build pass.
+      <div className="mt-5">
+        <h3 className="mb-2 text-sm font-semibold text-ink">3-year history</h3>
+        {historyError ? (
+          <p className="text-xs text-ghost">Failed to load history: {historyError}</p>
+        ) : history === null ? (
+          <div className="flex h-24 items-center justify-center gap-2 text-xs text-ink-faint">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-ink-faint border-t-transparent" />
+            loading monthly history…
+          </div>
+        ) : (
+          <HistoryChart data={history} />
+        )}
       </div>
     </div>
   );
