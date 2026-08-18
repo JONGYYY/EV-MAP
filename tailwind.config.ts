@@ -37,6 +37,8 @@ const config: Config = {
         healthy: "#4fb8e8",
         degraded: "#f0a63c",
         risk: "#c76bf0",
+        "equity-low": "#6366f1",
+        "equity-high": "#eab308",
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],

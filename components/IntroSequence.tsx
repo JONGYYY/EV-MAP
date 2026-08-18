@@ -20,7 +20,7 @@ const SLIDES: Slide[] = [
     eyebrow: "What we built",
     title: "Three years, 10-minute intervals, 46,000+ stations.",
     body:
-      "A continuous, port-level operational panel of U.S. public EV charging stations, July 2023 through June 2026 — tracking not just whether a station is listed, but whether it's actually reporting, actually working, and actually there.",
+      "A continuous, port-level operational panel of U.S. public EV charging stations, July 2023 through June 2026 — tracking not just whether a station is listed, but whether it's actually reporting, actually working, and actually there. Look for \"▶ Growth/exit timeline\" in the top toolbar to scrub through that whole history and watch stations appear and disappear month by month.",
   },
   {
     eyebrow: "What we found",

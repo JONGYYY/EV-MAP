@@ -5,11 +5,13 @@ import maplibregl, { Map as MLMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { ScatterplotLayer, GeoJsonLayer } from "@deck.gl/layers";
+import { HeatmapLayer } from "@deck.gl/aggregation-layers";
 import type { PickingInfo } from "@deck.gl/core";
 import type { Station, MapMode } from "@/lib/types";
-import { AFDC_CATEGORY_COLOR, healthColor, trendColor, colors } from "@/lib/theme";
+import { AFDC_CATEGORY_COLOR, healthColor, trendColor, colors, lerp } from "@/lib/theme";
 import { loadStateFeatures, type StateFeature } from "@/lib/usStates";
 import { computeStateAggregates, type StateAggregate } from "@/lib/stateAggregates";
+import { defaultFilters, isDefaultFilters, applyFilters, type StationFilters } from "@/lib/filters";
 import Legend from "./Legend";
 import LayerToggle from "./LayerToggle";
 import StationPanel from "./StationPanel";
@@ -18,6 +20,7 @@ import Leaderboard from "./Leaderboard";
 import FreshnessBadge from "./FreshnessBadge";
 import StateInfoCard from "./StateInfoCard";
 import TimeLapseControl from "./TimeLapseControl";
+import FiltersPanel from "./FiltersPanel";
 import { indexToYm, PANEL_MONTH_COUNT } from "@/lib/time";
 
 const BASEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty"; // free, no API key required
@@ -48,19 +51,26 @@ function choroplethColor(
   ];
 }
 
-function colorForStation(s: Station, mode: MapMode): [number, number, number] {
+interface IncomeDomain {
+  min: number;
+  max: number;
+}
+
+function colorForStation(s: Station, mode: MapMode, incomeDomain: IncomeDomain | null): [number, number, number] {
   if (mode === "ghost") return AFDC_CATEGORY_COLOR[s.afdc_category] ?? colors.noMatch;
   if (mode === "reliability") return healthColor(s.pct_healthy_lifetime);
   if (mode === "risk") {
     if (s.retirement_risk_score === null) return colors.noMatch;
     const t = Math.max(0, Math.min(1, s.retirement_risk_score / 0.6));
-    return [
-      Math.round(colors.healthy[0] + (colors.risk[0] - colors.healthy[0]) * t),
-      Math.round(colors.healthy[1] + (colors.risk[1] - colors.healthy[1]) * t),
-      Math.round(colors.healthy[2] + (colors.risk[2] - colors.healthy[2]) * t),
-    ];
+    return lerp(colors.healthy, colors.risk, t);
   }
   if (mode === "trend") return trendColor(s.reporting_trend_score);
+  if (mode === "equity") {
+    if (s.zcta_median_income === null || !incomeDomain) return colors.noMatch;
+    const span = incomeDomain.max - incomeDomain.min || 1;
+    const t = Math.max(0, Math.min(1, (s.zcta_median_income - incomeDomain.min) / span));
+    return lerp(colors.equityLow, colors.equityHigh, t);
+  }
   return colors.noMatch;
 }
 
@@ -96,12 +106,22 @@ export default function Map({ onReplayIntro }: { onReplayIntro?: () => void }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
 
+  // filters (cohort/speed/AFDC-status checkboxes) apply regardless of the
+  // current color mode -- every downstream view (points, choropleth
+  // aggregates, CSV export) reads from `filteredStations`, not `stations`.
+  const [filters, setFilters] = useState<StationFilters>(defaultFilters());
+  const [showFilters, setShowFilters] = useState(false);
+  const filteredStations = useMemo(
+    () => (stations ? applyFilters(stations, filters) : null),
+    [stations, filters]
+  );
+
   // choropleth (state-level rollup view)
   const [stateFeatures, setStateFeatures] = useState<StateFeature[] | null>(null);
   const [selectedState, setSelectedState] = useState<StateAggregate | null>(null);
   const stateAggregates = useMemo(
-    () => (stations ? computeStateAggregates(stations) : null),
-    [stations]
+    () => (filteredStations ? computeStateAggregates(filteredStations) : null),
+    [filteredStations]
   );
 
   // growth-vs-exit time-lapse -- independent of `mode` (color scheme),
@@ -109,6 +129,22 @@ export default function Map({ onReplayIntro }: { onReplayIntro?: () => void }) {
   const [timeLapseActive, setTimeLapseActive] = useState(false);
   const [timeLapseMonth, setTimeLapseMonth] = useState(PANEL_MONTH_COUNT - 1);
   const [timeLapsePlaying, setTimeLapsePlaying] = useState(false);
+
+  // density heatmap -- combinable with the checkbox filters above rather
+  // than a one-off "density of X" toggle per category: set filters, then
+  // toggle this on to see where that specific combination concentrates.
+  const [showDensity, setShowDensity] = useState(false);
+
+  // equity mode's color scale is relative to the currently filtered set's
+  // own income spread, not a fixed national range (mirrors the choropleth's
+  // ghost-rate rescaling for the same reason -- a fixed 0-far-beyond-max
+  // scale would wash out real, visible variation).
+  const incomeDomain = useMemo(() => {
+    if (!filteredStations) return null;
+    const vals = filteredStations.map((s) => s.zcta_median_income).filter((v): v is number => v !== null);
+    if (!vals.length) return null;
+    return { min: Math.min(...vals), max: Math.max(...vals) };
+  }, [filteredStations]);
 
   useEffect(() => {
     if (mode === "choropleth" && !stateFeatures) {
@@ -216,7 +252,7 @@ export default function Map({ onReplayIntro }: { onReplayIntro?: () => void }) {
   );
 
   const layers = useMemo(() => {
-    if (!stations) return [];
+    if (!filteredStations) return [];
 
     if (mode === "choropleth") {
       if (!stateFeatures || !stateAggregates) return [];
@@ -248,15 +284,16 @@ export default function Map({ onReplayIntro }: { onReplayIntro?: () => void }) {
     // time-lapse: filter to stations present that month, colored by
     // added/exiting/continuing regardless of the selected color mode --
     // it's answering a different question (composition over time) than
-    // the mode toggles are.
+    // the mode toggles are. Applied on top of the checkbox filters, not
+    // instead of them, so the two compose.
     const data = timeLapseActive
-      ? stations.filter((s) => {
+      ? filteredStations.filter((s) => {
           const ym = indexToYm(timeLapseMonth);
           return s.first_ym <= ym && s.last_ym >= ym;
         })
-      : stations;
+      : filteredStations;
 
-    return [
+    const result: (ScatterplotLayer<Station> | HeatmapLayer<Station>)[] = [
       new ScatterplotLayer<Station>({
         id: "stations",
         data,
@@ -271,13 +308,66 @@ export default function Map({ onReplayIntro }: { onReplayIntro?: () => void }) {
         stroked: false,
         getPosition: (d) => [d.long, d.lat],
         getFillColor: (d) =>
-          timeLapseActive ? timeLapseColor(d, indexToYm(timeLapseMonth)) : colorForStation(d, mode),
-        updateTriggers: { getFillColor: [mode, timeLapseActive, timeLapseMonth] },
+          timeLapseActive ? timeLapseColor(d, indexToYm(timeLapseMonth)) : colorForStation(d, mode, incomeDomain),
+        updateTriggers: { getFillColor: [mode, timeLapseActive, timeLapseMonth, incomeDomain] },
         onClick,
         transitions: { getFillColor: 250 },
       }),
     ];
-  }, [stations, mode, onClick, stateFeatures, stateAggregates, onStateClick, timeLapseActive, timeLapseMonth]);
+
+    // Density heatmap: renders over the same filtered+time-lapsed set as the
+    // point layer above, so "density of any category/combination" is just
+    // filters + this toggle rather than a separate mode per category.
+    if (showDensity) {
+      result.push(
+        new HeatmapLayer<Station>({
+          id: "density-heatmap",
+          data,
+          pickable: false,
+          getPosition: (d) => [d.long, d.lat],
+          radiusPixels: 40,
+          intensity: 1,
+          threshold: 0.03,
+        })
+      );
+    }
+
+    // Selected-station halo: a second, larger stroked-only point on top of
+    // the main layer so it's unambiguous at any zoom which dot the open
+    // panel refers to. Own layer (not a per-point radius/stroke override on
+    // the main layer) since it's the only point that ever needs it.
+    if (selected) {
+      result.push(
+        new ScatterplotLayer<Station>({
+          id: "selected-halo",
+          data: [selected],
+          pickable: false,
+          radiusUnits: "pixels",
+          getRadius: 11,
+          stroked: true,
+          filled: false,
+          lineWidthUnits: "pixels",
+          getLineWidth: 2.5,
+          getLineColor: [255, 255, 255, 230],
+          getPosition: (d) => [d.long, d.lat],
+        })
+      );
+    }
+
+    return result;
+  }, [
+    filteredStations,
+    mode,
+    onClick,
+    stateFeatures,
+    stateAggregates,
+    onStateClick,
+    timeLapseActive,
+    timeLapseMonth,
+    selected,
+    incomeDomain,
+    showDensity,
+  ]);
 
   useEffect(() => {
     overlayRef.current?.setProps({ layers });
@@ -305,7 +395,19 @@ export default function Map({ onReplayIntro }: { onReplayIntro?: () => void }) {
       <div className="pointer-events-none absolute inset-0 z-10">
         <div className="pointer-events-auto absolute left-4 top-4 flex items-start gap-2">
           <LayerToggle mode={mode} onChange={setMode} />
-          <ExportButton stations={stations} />
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            aria-pressed={showFilters}
+            className={`glass-panel relative flex min-h-[44px] items-center rounded-lg px-3 text-sm font-medium shadow-lg ${
+              showFilters ? "text-ink" : "text-ink-muted hover:bg-surface-raised hover:text-ink"
+            }`}
+          >
+            Filters
+            {!isDefaultFilters(filters) && (
+              <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-ghost" aria-hidden="true" />
+            )}
+          </button>
+          <ExportButton stations={filteredStations} />
           <button
             onClick={() => setShowLeaderboard((v) => !v)}
             aria-pressed={showLeaderboard}
@@ -322,14 +424,29 @@ export default function Map({ onReplayIntro }: { onReplayIntro?: () => void }) {
               timeLapseActive ? "text-ink" : "text-ink-muted hover:bg-surface-raised hover:text-ink"
             }`}
           >
-            Time-lapse
+            ▶ Growth/exit timeline
+          </button>
+          <button
+            onClick={() => setShowDensity((v) => !v)}
+            aria-pressed={showDensity}
+            title="Heatmap of the currently filtered stations -- combine with Filters to see density of any category"
+            className={`glass-panel flex min-h-[44px] items-center rounded-lg px-3 text-sm font-medium shadow-lg ${
+              showDensity ? "text-ink" : "text-ink-muted hover:bg-surface-raised hover:text-ink"
+            }`}
+          >
+            Show density
           </button>
         </div>
+        {showFilters && (
+          <div className="pointer-events-auto absolute left-4 top-16">
+            <FiltersPanel filters={filters} onChange={setFilters} onClose={() => setShowFilters(false)} />
+          </div>
+        )}
         <div className="pointer-events-auto absolute bottom-4 left-4 flex items-end gap-2">
           {mode === "choropleth" && selectedState ? (
             <StateInfoCard agg={selectedState} onClose={() => setSelectedState(null)} />
           ) : (
-            <Legend mode={mode} count={stations?.length ?? null} />
+            <Legend mode={mode} count={filteredStations?.length ?? null} />
           )}
           {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} />}
         </div>

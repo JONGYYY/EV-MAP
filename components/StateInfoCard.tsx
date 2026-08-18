@@ -1,6 +1,7 @@
 "use client";
 
 import type { StateAggregate } from "@/lib/stateAggregates";
+import InfoTooltip from "./InfoTooltip";
 
 export default function StateInfoCard({ agg, onClose }: { agg: StateAggregate; onClose: () => void }) {
   return (
@@ -25,7 +26,10 @@ export default function StateInfoCard({ agg, onClose }: { agg: StateAggregate; o
           <span className="font-mono tabular text-ink">{agg.n_exited.toLocaleString()}</span>
         </div>
         <div className="flex items-baseline justify-between">
-          <span className="text-ink-muted">Ghost rate</span>
+          <span className="flex items-center gap-1.5 text-ink-muted">
+            Ghost rate
+            <InfoTooltip text="Share of this state's exited stations, matched to a current AFDC record, that AFDC still lists as active. High means our panel is losing stations that are still physically operating -- a reporting/feed gap, not necessarily a real shutdown." />
+          </span>
           <span className="font-mono tabular text-ink">
             {agg.ghost_rate !== null ? `${(agg.ghost_rate * 100).toFixed(1)}%` : "—"}
           </span>

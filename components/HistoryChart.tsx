@@ -17,22 +17,30 @@ const STATUS_LABEL: Record<string, string> = {
 const WIDTH = 320;
 const HEIGHT = 64;
 const PAD = 4;
+const AXIS_W = 26; // reserved left gutter for y-axis tick labels
 
 export default function HistoryChart({ data }: { data: HistoryMonth[] }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
-  const { path, points, maxVal } = useMemo(() => {
+  const { path, points, maxVal, ticks } = useMemo(() => {
     const vals = data.map((d) => d.avg_ports_in_use ?? 0);
     const max = Math.max(0.5, ...vals); // floor so a fully-flat-zero series isn't a flat line at the very bottom edge
     const n = Math.max(1, data.length - 1);
+    const plotX0 = AXIS_W + PAD;
+    const plotW = WIDTH - plotX0 - PAD;
     const pts = data.map((d, i) => {
-      const x = PAD + (i / n) * (WIDTH - 2 * PAD);
+      const x = plotX0 + (i / n) * plotW;
       const v = d.avg_ports_in_use ?? 0;
       const y = HEIGHT - PAD - (v / max) * (HEIGHT - 2 * PAD);
       return { x, y, d, i };
     });
     const d = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-    return { path: d, points: pts, maxVal: max };
+    const tickVals = [0, max / 2, max];
+    const tk = tickVals.map((v) => ({
+      value: v,
+      y: HEIGHT - PAD - (v / max) * (HEIGHT - 2 * PAD),
+    }));
+    return { path: d, points: pts, maxVal: max, ticks: tk };
   }, [data]);
 
   if (data.length === 0) {
@@ -53,6 +61,22 @@ export default function HistoryChart({ data }: { data: HistoryMonth[] }) {
         role="img"
         aria-label="Monthly average ports in use over the panel history"
       >
+        {ticks.map((t, i) => (
+          <g key={i}>
+            <line
+              x1={AXIS_W}
+              x2={WIDTH - PAD}
+              y1={t.y}
+              y2={t.y}
+              stroke="#242c38"
+              strokeWidth={1}
+              strokeDasharray={t.value === 0 ? undefined : "2,2"}
+            />
+            <text x={AXIS_W - 4} y={t.y} textAnchor="end" dominantBaseline="middle" className="fill-ink-faint" fontSize={7} fontFamily="var(--font-mono)">
+              {t.value.toFixed(1)}
+            </text>
+          </g>
+        ))}
         <path d={path} fill="none" stroke="#4fb8e8" strokeWidth={1.5} />
         {points.map((p) => (
           <circle
@@ -68,9 +92,9 @@ export default function HistoryChart({ data }: { data: HistoryMonth[] }) {
         {points.map((p) => (
           <rect
             key={`hit-${p.i}`}
-            x={p.x - WIDTH / data.length / 2}
+            x={p.x - (WIDTH - AXIS_W) / data.length / 2}
             y={0}
-            width={WIDTH / data.length}
+            width={(WIDTH - AXIS_W) / data.length}
             height={HEIGHT}
             fill="transparent"
             onMouseEnter={() => setHoverIdx(p.i)}
@@ -79,8 +103,15 @@ export default function HistoryChart({ data }: { data: HistoryMonth[] }) {
         ))}
       </svg>
 
-      <div className="mt-2 mb-1 text-xs font-medium text-ink-muted">reporting status / month</div>
-      <div className="flex h-3 w-full overflow-hidden rounded-sm" role="img" aria-label="Monthly reporting-status strip">
+      <div className="mt-2 mb-1 text-xs font-medium text-ink-muted" style={{ paddingLeft: `${(AXIS_W / WIDTH) * 100}%` }}>
+        reporting status / month
+      </div>
+      <div
+        className="flex h-3 w-full overflow-hidden rounded-sm"
+        style={{ marginLeft: `${(AXIS_W / WIDTH) * 100}%`, width: `${((WIDTH - AXIS_W) / WIDTH) * 100}%` }}
+        role="img"
+        aria-label="Monthly reporting-status strip"
+      >
         {data.map((d, i) => (
           <div
             key={i}

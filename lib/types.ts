@@ -27,9 +27,17 @@ export interface Station {
   // drives the growth-vs-exit time-lapse.
   first_ym: number;
   last_ym: number;
+  // name/date_last_confirmed of the matched AFDC record (phase48's 550m
+  // coordinate match), null if afdc_category is "no_match".
+  afdc_name: string | null;
+  afdc_date_confirmed: string | null;
+  // ZCTA-level (station's local area, not station-specific) median
+  // household income -- reused from the phase49 regression covariates.
+  zcta_median_income: number | null;
+  total_ports: number | null;
 }
 
-export type MapMode = "ghost" | "reliability" | "risk" | "trend" | "choropleth";
+export type MapMode = "ghost" | "reliability" | "risk" | "trend" | "equity" | "choropleth";
 
 export interface BrandLeaderboardRow {
   brand: string;

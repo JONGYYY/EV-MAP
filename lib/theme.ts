@@ -8,6 +8,10 @@ export const colors = {
   healthy: [79, 184, 232] as [number, number, number],
   degraded: [240, 166, 60] as [number, number, number],
   risk: [199, 107, 240] as [number, number, number],
+  // equity mode's own pair (indigo -> gold), distinct from every other
+  // mode's palette so it can't be mistaken for the reliability/risk scales.
+  equityLow: [99, 102, 241] as [number, number, number],
+  equityHigh: [234, 179, 8] as [number, number, number],
 };
 
 export const AFDC_CATEGORY_COLOR: Record<string, [number, number, number]> = {
@@ -26,7 +30,7 @@ export const AFDC_CATEGORY_LABEL: Record<string, string> = {
   afdc_inactive: "Active in our panel, but AFDC lists it inactive",
 };
 
-function lerp(a: [number, number, number], b: [number, number, number], t: number): [number, number, number] {
+export function lerp(a: [number, number, number], b: [number, number, number], t: number): [number, number, number] {
   const c = Math.max(0, Math.min(1, t));
   return [
     Math.round(a[0] + (b[0] - a[0]) * c),

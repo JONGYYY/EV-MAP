@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@deck.gl/aggregation-layers": "^9.0.38",
     "@deck.gl/core": "^9.0.38",
     "@deck.gl/layers": "^9.0.38",
     "@deck.gl/mapbox": "^9.0.38",
