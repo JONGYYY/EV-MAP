@@ -25,6 +25,10 @@ import { indexToYm, PANEL_MONTH_COUNT } from "@/lib/time";
 
 const BASEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty"; // free, no API key required
 
+// StationPanel is `w-96` (Tailwind's 96 = 24rem = 384px) -- kept as a
+// constant here so the fly-to/jump-to padding below stays in sync with it.
+const STATION_PANEL_WIDTH = 384;
+
 const CHOROPLETH_LOW: [number, number, number] = colors.healthy;
 const CHOROPLETH_HIGH: [number, number, number] = colors.ghost;
 
@@ -183,7 +187,11 @@ export default function Map({ onReplayIntro }: { onReplayIntro?: () => void }) {
     const match = stations.find((s) => s.LocID === initialDeepLinkId);
     if (match) {
       setSelected(match);
-      mapRef.current?.jumpTo({ center: [match.long, match.lat], zoom: 9 });
+      mapRef.current?.jumpTo({
+        center: [match.long, match.lat],
+        zoom: 7,
+        padding: { top: 0, bottom: 0, left: 0, right: STATION_PANEL_WIDTH },
+      });
     }
   }, [stations]);
 
@@ -237,7 +245,19 @@ export default function Map({ onReplayIntro }: { onReplayIntro?: () => void }) {
   const onClick = useCallback((info: PickingInfo<Station>) => {
     if (info.object) {
       setSelected(info.object);
-      mapRef.current?.flyTo({ center: [info.object.long, info.object.lat], zoom: Math.max(mapRef.current.getZoom(), 9), duration: 600 });
+      // `padding: { right: STATION_PANEL_WIDTH }` shifts MapLibre's notion of
+      // "center" left by that many pixels, so the point (and its halo) lands
+      // in the visible left portion of the map instead of directly behind
+      // the panel that's about to open on top of it. Also cap the zoom at a
+      // more moderate level than before -- flying to city-block zoom on
+      // every click was too aggressive; this keeps some surrounding context
+      // while still zooming in from the national view.
+      mapRef.current?.flyTo({
+        center: [info.object.long, info.object.lat],
+        zoom: Math.max(mapRef.current.getZoom(), 7),
+        padding: { top: 0, bottom: 0, left: 0, right: STATION_PANEL_WIDTH },
+        duration: 600,
+      });
     }
   }, []);
 
