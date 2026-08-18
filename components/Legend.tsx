@@ -23,6 +23,11 @@ const LEGENDS: Record<MapMode, { swatch: string; label: string }[]> = {
     { swatch: "bg-ghost", label: "Reporting degrading vs. own history" },
     { swatch: "bg-no-match", label: "Not scored (exited or under 6mo history)" },
   ],
+  choropleth: [
+    { swatch: "bg-healthy", label: "Low ghost rate (state-level)" },
+    { swatch: "bg-ghost", label: "High ghost rate (state-level)" },
+    { swatch: "bg-no-match", label: "No exited stations matched to AFDC" },
+  ],
 };
 
 export default function Legend({ mode, count }: { mode: MapMode; count: number | null }) {

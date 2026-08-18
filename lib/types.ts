@@ -23,9 +23,13 @@ export interface Station {
   // whole-word name match against known automaker-dealership brands
   // (phase53) -- null if no match. Used for the network/brand leaderboard.
   brand: string | null;
+  // YYYYMM of this station's first and last observed month in the panel --
+  // drives the growth-vs-exit time-lapse.
+  first_ym: number;
+  last_ym: number;
 }
 
-export type MapMode = "ghost" | "reliability" | "risk" | "trend";
+export type MapMode = "ghost" | "reliability" | "risk" | "trend" | "choropleth";
 
 export interface BrandLeaderboardRow {
   brand: string;

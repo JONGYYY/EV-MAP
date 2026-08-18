@@ -7,6 +7,7 @@ const OPTIONS: { key: MapMode; label: string }[] = [
   { key: "reliability", label: "Reliability" },
   { key: "risk", label: "Retirement risk" },
   { key: "trend", label: "Reporting trend" },
+  { key: "choropleth", label: "By state" },
 ];
 
 export default function LayerToggle({

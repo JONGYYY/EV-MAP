@@ -4,18 +4,49 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import maplibregl, { Map as MLMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { MapboxOverlay } from "@deck.gl/mapbox";
-import { ScatterplotLayer } from "@deck.gl/layers";
+import { ScatterplotLayer, GeoJsonLayer } from "@deck.gl/layers";
 import type { PickingInfo } from "@deck.gl/core";
 import type { Station, MapMode } from "@/lib/types";
 import { AFDC_CATEGORY_COLOR, healthColor, trendColor, colors } from "@/lib/theme";
+import { loadStateFeatures, type StateFeature } from "@/lib/usStates";
+import { computeStateAggregates, type StateAggregate } from "@/lib/stateAggregates";
 import Legend from "./Legend";
 import LayerToggle from "./LayerToggle";
 import StationPanel from "./StationPanel";
 import ExportButton from "./ExportButton";
 import Leaderboard from "./Leaderboard";
 import FreshnessBadge from "./FreshnessBadge";
+import StateInfoCard from "./StateInfoCard";
+import TimeLapseControl from "./TimeLapseControl";
+import { indexToYm, PANEL_MONTH_COUNT } from "@/lib/time";
 
 const BASEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty"; // free, no API key required
+
+const CHOROPLETH_LOW: [number, number, number] = colors.healthy;
+const CHOROPLETH_HIGH: [number, number, number] = colors.ghost;
+
+// Ghost rate turns out to be uniformly high across nearly every state
+// (89.7%-100% observed, not spread across the full 0-100% theoretical
+// range) -- a real, striking finding in its own right (the digest's
+// headline number isn't a few outlier states, it's everywhere), but it
+// means a color scale spanning the full 0-1 range would render almost
+// every state as visually identical. Stretch the scale to the actual
+// observed min/max instead, so the real (smaller) variation is visible.
+function choroplethColor(
+  ghostRate: number | null,
+  domainMin: number,
+  domainMax: number
+): [number, number, number, number] {
+  if (ghostRate === null) return [...colors.noMatch, 120];
+  const span = domainMax - domainMin || 1;
+  const t = Math.max(0, Math.min(1, (ghostRate - domainMin) / span));
+  return [
+    Math.round(CHOROPLETH_LOW[0] + (CHOROPLETH_HIGH[0] - CHOROPLETH_LOW[0]) * t),
+    Math.round(CHOROPLETH_LOW[1] + (CHOROPLETH_HIGH[1] - CHOROPLETH_LOW[1]) * t),
+    Math.round(CHOROPLETH_LOW[2] + (CHOROPLETH_HIGH[2] - CHOROPLETH_LOW[2]) * t),
+    170,
+  ];
+}
 
 function colorForStation(s: Station, mode: MapMode): [number, number, number] {
   if (mode === "ghost") return AFDC_CATEGORY_COLOR[s.afdc_category] ?? colors.noMatch;
@@ -33,6 +64,27 @@ function colorForStation(s: Station, mode: MapMode): [number, number, number] {
   return colors.noMatch;
 }
 
+function timeLapseColor(s: Station, ym: number): [number, number, number] {
+  // ACTIVE_THROUGHOUT stations all share first_ym = panel start (left-
+  // censored -- we don't know when they truly first appeared, only that
+  // they were already there) and, symmetrically, ACTIVE_THROUGHOUT/
+  // NEWLY_ADDED stations all share last_ym = panel end for any station
+  // still active at the panel's final month (right-censored -- still
+  // active, not actually exiting). Coloring on first_ym/last_ym alone
+  // would falsely paint every still-active station as "exiting" at the
+  // final slider position and every long-tenured station as "new" at the
+  // first. Gate on cohort membership too, since NEWLY_ADDED/TRANSIENT
+  // are the only cohorts whose first_ym is a genuine appearance (excluded
+  // from the start window by definition) and RETIRED/TRANSIENT are the
+  // only cohorts whose last_ym is a genuine exit (excluded from the end
+  // window by definition).
+  const isGenuineArrival = s.cohort === "NEWLY_ADDED" || s.cohort === "TRANSIENT";
+  const isGenuineExit = s.cohort === "RETIRED" || s.cohort === "TRANSIENT";
+  if (isGenuineArrival && s.first_ym === ym) return colors.confirmedGone; // newly added this month
+  if (isGenuineExit && s.last_ym === ym) return colors.ghost; // exiting this month
+  return colors.noMatch; // continuing
+}
+
 export default function Map() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
@@ -43,6 +95,27 @@ export default function Map() {
   const [selected, setSelected] = useState<Station | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+
+  // choropleth (state-level rollup view)
+  const [stateFeatures, setStateFeatures] = useState<StateFeature[] | null>(null);
+  const [selectedState, setSelectedState] = useState<StateAggregate | null>(null);
+  const stateAggregates = useMemo(
+    () => (stations ? computeStateAggregates(stations) : null),
+    [stations]
+  );
+
+  // growth-vs-exit time-lapse -- independent of `mode` (color scheme),
+  // since it's a filter+recolor overlay rather than one of the toggle views.
+  const [timeLapseActive, setTimeLapseActive] = useState(false);
+  const [timeLapseMonth, setTimeLapseMonth] = useState(PANEL_MONTH_COUNT - 1);
+  const [timeLapsePlaying, setTimeLapsePlaying] = useState(false);
+
+  useEffect(() => {
+    if (mode === "choropleth" && !stateFeatures) {
+      loadStateFeatures().then(setStateFeatures).catch((e) => setLoadError(String(e)));
+    }
+  }, [mode, stateFeatures]);
+
   const deepLinkHandled = useRef(false);
   // Captured synchronously on first render, before any effect runs -- the
   // URL-sync effect below fires on mount (when `selected` is still null)
@@ -132,12 +205,61 @@ export default function Map() {
     }
   }, []);
 
+  const onStateClick = useCallback(
+    (info: PickingInfo<StateFeature>) => {
+      if (info.object && stateAggregates) {
+        const agg = stateAggregates.get(info.object.properties.abbr);
+        if (agg) setSelectedState(agg);
+      }
+    },
+    [stateAggregates]
+  );
+
   const layers = useMemo(() => {
     if (!stations) return [];
+
+    if (mode === "choropleth") {
+      if (!stateFeatures || !stateAggregates) return [];
+      const rates = [...stateAggregates.values()]
+        .map((a) => a.ghost_rate)
+        .filter((r): r is number => r !== null);
+      const domainMin = rates.length ? Math.min(...rates) : 0;
+      const domainMax = rates.length ? Math.max(...rates) : 1;
+      return [
+        new GeoJsonLayer<StateFeature>({
+          id: "state-choropleth",
+          data: stateFeatures,
+          pickable: true,
+          stroked: true,
+          filled: true,
+          getLineColor: [10, 14, 20],
+          getLineWidth: 1,
+          lineWidthMinPixels: 1,
+          getFillColor: (f) => {
+            const abbr = (f as unknown as StateFeature).properties.abbr;
+            return choroplethColor(stateAggregates.get(abbr)?.ghost_rate ?? null, domainMin, domainMax);
+          },
+          onClick: onStateClick,
+          updateTriggers: { getFillColor: stateAggregates },
+        }),
+      ];
+    }
+
+    // time-lapse: filter to stations present that month, colored by
+    // added/exiting/continuing regardless of the selected color mode --
+    // it's answering a different question (composition over time) than
+    // the mode toggles are.
+    const data = timeLapseActive
+      ? stations.filter((s) => {
+          const ym = indexToYm(timeLapseMonth);
+          return s.first_ym <= ym && s.last_ym >= ym;
+        })
+      : stations;
+
     return [
       new ScatterplotLayer<Station>({
         id: "stations",
-        data: stations,
+        data,
         pickable: true,
         radiusUnits: "pixels",
         // rendered radius stays small at low zoom (avoid clutter across 46k
@@ -148,13 +270,14 @@ export default function Map() {
         radiusMaxPixels: 8,
         stroked: false,
         getPosition: (d) => [d.long, d.lat],
-        getFillColor: (d) => colorForStation(d, mode),
-        updateTriggers: { getFillColor: mode },
+        getFillColor: (d) =>
+          timeLapseActive ? timeLapseColor(d, indexToYm(timeLapseMonth)) : colorForStation(d, mode),
+        updateTriggers: { getFillColor: [mode, timeLapseActive, timeLapseMonth] },
         onClick,
         transitions: { getFillColor: 250 },
       }),
     ];
-  }, [stations, mode, onClick]);
+  }, [stations, mode, onClick, stateFeatures, stateAggregates, onStateClick, timeLapseActive, timeLapseMonth]);
 
   useEffect(() => {
     overlayRef.current?.setProps({ layers });
@@ -192,11 +315,38 @@ export default function Map() {
           >
             Brand leaderboard
           </button>
+          <button
+            onClick={() => setTimeLapseActive((v) => !v)}
+            aria-pressed={timeLapseActive}
+            className={`glass-panel flex min-h-[44px] items-center rounded-lg px-3 text-sm font-medium shadow-lg ${
+              timeLapseActive ? "text-ink" : "text-ink-muted hover:bg-surface-raised hover:text-ink"
+            }`}
+          >
+            Time-lapse
+          </button>
         </div>
         <div className="pointer-events-auto absolute bottom-4 left-4 flex items-end gap-2">
-          <Legend mode={mode} count={stations?.length ?? null} />
+          {mode === "choropleth" && selectedState ? (
+            <StateInfoCard agg={selectedState} onClose={() => setSelectedState(null)} />
+          ) : (
+            <Legend mode={mode} count={stations?.length ?? null} />
+          )}
           {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} />}
         </div>
+        {timeLapseActive && (
+          <div className="pointer-events-auto absolute bottom-24 left-1/2 -translate-x-1/2">
+            <TimeLapseControl
+              monthIndex={timeLapseMonth}
+              onChange={setTimeLapseMonth}
+              playing={timeLapsePlaying}
+              onTogglePlay={() => setTimeLapsePlaying((v) => !v)}
+              onClose={() => {
+                setTimeLapseActive(false);
+                setTimeLapsePlaying(false);
+              }}
+            />
+          </div>
+        )}
         {/* bottom-8, not bottom-4: MapLibre's required attribution control
             occupies the same corner at the very bottom edge -- this keeps
             it clearly visible rather than crowded/covered. */}
