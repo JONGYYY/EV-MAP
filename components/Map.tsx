@@ -85,7 +85,7 @@ function timeLapseColor(s: Station, ym: number): [number, number, number] {
   return colors.noMatch; // continuing
 }
 
-export default function Map() {
+export default function Map({ onReplayIntro }: { onReplayIntro?: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const overlayRef = useRef<MapboxOverlay | null>(null);
@@ -353,6 +353,16 @@ export default function Map() {
         <div className="pointer-events-auto absolute bottom-8 right-4">
           <FreshnessBadge />
         </div>
+        {onReplayIntro && (
+          <button
+            onClick={onReplayIntro}
+            aria-label="About this map"
+            title="About this map"
+            className="glass-panel pointer-events-auto absolute right-4 top-28 flex h-11 w-11 items-center justify-center rounded-full text-sm font-semibold text-ink-muted shadow-lg hover:bg-surface-raised hover:text-ink"
+          >
+            ?
+          </button>
+        )}
         {loadError && (
           <div className="pointer-events-auto absolute left-1/2 top-4 -translate-x-1/2 rounded-md border border-ghost/40 bg-surface-panel/90 px-4 py-2 text-sm text-ghost">
             Failed to load station data: {loadError}
