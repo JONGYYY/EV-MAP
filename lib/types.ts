@@ -13,6 +13,13 @@ export interface Station {
   pct_healthy_lifetime: number | null;
   afdc_category: AfdcCategory;
   retirement_risk_score: number | null;
+  // phase52's early-warning signal: this station's own recent (3mo) NO_DATA
+  // rate minus its own trailing (9mo) baseline. Positive = degrading faster
+  // than its own history -- backtested AUC-equivalent 0.71 against stations
+  // that later exited. A trajectory signal, distinct from
+  // retirement_risk_score (a structural/demographic signal) -- kept as a
+  // separate map layer rather than blended into one score, per the plan.
+  reporting_trend_score: number | null;
 }
 
-export type MapMode = "ghost" | "reliability" | "risk";
+export type MapMode = "ghost" | "reliability" | "risk" | "trend";

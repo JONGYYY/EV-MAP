@@ -18,6 +18,11 @@ const LEGENDS: Record<MapMode, { swatch: string; label: string }[]> = {
     { swatch: "bg-risk", label: "High predicted exit risk" },
     { swatch: "bg-no-match", label: "Not scored (exited or no demographics)" },
   ],
+  trend: [
+    { swatch: "bg-healthy", label: "Reporting steady vs. own history" },
+    { swatch: "bg-ghost", label: "Reporting degrading vs. own history" },
+    { swatch: "bg-no-match", label: "Not scored (exited or under 6mo history)" },
+  ],
 };
 
 export default function Legend({ mode, count }: { mode: MapMode; count: number | null }) {

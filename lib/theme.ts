@@ -26,15 +26,24 @@ export const AFDC_CATEGORY_LABEL: Record<string, string> = {
   afdc_inactive: "Active in our panel, but AFDC lists it inactive",
 };
 
+function lerp(a: [number, number, number], b: [number, number, number], t: number): [number, number, number] {
+  const c = Math.max(0, Math.min(1, t));
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * c),
+    Math.round(a[1] + (b[1] - a[1]) * c),
+    Math.round(a[2] + (b[2] - a[2]) * c),
+  ];
+}
+
 export function healthColor(pctHealthy: number | null): [number, number, number] {
   if (pctHealthy === null) return colors.noMatch;
-  // interpolate degraded -> healthy across 0-100
-  const t = Math.max(0, Math.min(1, pctHealthy / 100));
-  const a = colors.degraded;
-  const b = colors.healthy;
-  return [
-    Math.round(a[0] + (b[0] - a[0]) * t),
-    Math.round(a[1] + (b[1] - a[1]) * t),
-    Math.round(a[2] + (b[2] - a[2]) * t),
-  ];
+  return lerp(colors.degraded, colors.healthy, pctHealthy / 100);
+}
+
+// phase52's backtest found exited stations average trend_score ~0.18 vs
+// ~0.01 for stations that stayed active -- scale so that range is where
+// the color signal actually differentiates, not clamped at the extremes.
+export function trendColor(score: number | null): [number, number, number] {
+  if (score === null) return colors.noMatch;
+  return lerp(colors.healthy, colors.ghost, score / 0.3);
 }

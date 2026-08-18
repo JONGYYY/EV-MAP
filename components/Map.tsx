@@ -7,7 +7,7 @@ import { MapboxOverlay } from "@deck.gl/mapbox";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import type { PickingInfo } from "@deck.gl/core";
 import type { Station, MapMode } from "@/lib/types";
-import { AFDC_CATEGORY_COLOR, healthColor, colors } from "@/lib/theme";
+import { AFDC_CATEGORY_COLOR, healthColor, trendColor, colors } from "@/lib/theme";
 import Legend from "./Legend";
 import LayerToggle from "./LayerToggle";
 import StationPanel from "./StationPanel";
@@ -26,6 +26,7 @@ function colorForStation(s: Station, mode: MapMode): [number, number, number] {
       Math.round(colors.healthy[2] + (colors.risk[2] - colors.healthy[2]) * t),
     ];
   }
+  if (mode === "trend") return trendColor(s.reporting_trend_score);
   return colors.noMatch;
 }
 

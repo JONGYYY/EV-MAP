@@ -73,10 +73,18 @@ export default function StationPanel({ station, onClose }: { station: Station; o
         value={station.pct_healthy_lifetime !== null ? `${station.pct_healthy_lifetime.toFixed(1)}%` : "—"}
       />
       <Stat
-        label="Predicted exit risk"
+        label="Predicted exit risk (structural)"
         value={
           station.retirement_risk_score !== null
             ? `${(station.retirement_risk_score * 100).toFixed(1)}%`
+            : "not scored"
+        }
+      />
+      <Stat
+        label="Reporting trend (own history)"
+        value={
+          station.reporting_trend_score !== null
+            ? `${station.reporting_trend_score >= 0 ? "+" : ""}${(station.reporting_trend_score * 100).toFixed(1)}pp`
             : "not scored"
         }
       />
