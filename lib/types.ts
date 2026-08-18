@@ -20,6 +20,16 @@ export interface Station {
   // retirement_risk_score (a structural/demographic signal) -- kept as a
   // separate map layer rather than blended into one score, per the plan.
   reporting_trend_score: number | null;
+  // whole-word name match against known automaker-dealership brands
+  // (phase53) -- null if no match. Used for the network/brand leaderboard.
+  brand: string | null;
 }
 
 export type MapMode = "ghost" | "reliability" | "risk" | "trend";
+
+export interface BrandLeaderboardRow {
+  brand: string;
+  n_named: number;
+  n_always_zero: number;
+  pct_always_zero: number | null;
+}

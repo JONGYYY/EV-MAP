@@ -12,6 +12,7 @@ import Legend from "./Legend";
 import LayerToggle from "./LayerToggle";
 import StationPanel from "./StationPanel";
 import ExportButton from "./ExportButton";
+import Leaderboard from "./Leaderboard";
 
 const BASEMAP_STYLE = "https://tiles.openfreemap.org/styles/liberty"; // free, no API key required
 
@@ -40,6 +41,7 @@ export default function Map() {
   const [mode, setMode] = useState<MapMode>("ghost");
   const [selected, setSelected] = useState<Station | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const deepLinkHandled = useRef(false);
   // Captured synchronously on first render, before any effect runs -- the
   // URL-sync effect below fires on mount (when `selected` is still null)
@@ -171,13 +173,28 @@ export default function Map() {
         style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
       />
 
-      <div className="pointer-events-none absolute inset-0">
+      {/* z-10: MapLibre inserts its own control containers (including
+          deck.gl's MapboxOverlay, added via map.addControl) directly into
+          the map's DOM subtree, which can end up stacked above plain
+          sibling divs with no explicit z-index -- the leaderboard panel
+          was rendering visually BEHIND the station canvas without this. */}
+      <div className="pointer-events-none absolute inset-0 z-10">
         <div className="pointer-events-auto absolute left-4 top-4 flex items-start gap-2">
           <LayerToggle mode={mode} onChange={setMode} />
           <ExportButton stations={stations} />
+          <button
+            onClick={() => setShowLeaderboard((v) => !v)}
+            aria-pressed={showLeaderboard}
+            className={`glass-panel flex min-h-[44px] items-center rounded-lg px-3 text-sm font-medium shadow-lg ${
+              showLeaderboard ? "text-ink" : "text-ink-muted hover:bg-surface-raised hover:text-ink"
+            }`}
+          >
+            Brand leaderboard
+          </button>
         </div>
-        <div className="pointer-events-auto absolute bottom-4 left-4">
+        <div className="pointer-events-auto absolute bottom-4 left-4 flex items-end gap-2">
           <Legend mode={mode} count={stations?.length ?? null} />
+          {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} />}
         </div>
         {loadError && (
           <div className="pointer-events-auto absolute left-1/2 top-4 -translate-x-1/2 rounded-md border border-ghost/40 bg-surface-panel/90 px-4 py-2 text-sm text-ghost">
